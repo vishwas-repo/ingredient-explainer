@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ingredient-explainer
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    healthCheckPath: /health

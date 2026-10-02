@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ingredient Explainer</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:900px;margin:30px auto;padding:0 16px}
+textarea{width:100%;min-height:130px;padding:10px}
+button{padding:10px 16px;margin:6px 4px 6px 0;cursor:pointer}
+.card{border:1px solid #ddd;border-radius:10px;padding:14px;margin:10px 0}
+.badge{display:inline-block;padding:4px 8px;border-radius:12px;background:#eee;margin-right:6px}
+img{max-width:100%;max-height:350px;margin:10px 0}
+pre{white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Ingredient Explainer</h1>
+<p>Upload a package photo or paste an ingredient list.</p>
+
+<input id="cameraInput" type="file" accept="image/*" capture="environment" hidden>
+<input id="uploadInput" type="file" accept="image/*" hidden>
+<button onclick="document.getElementById('cameraInput').click()">📷 Take Photo</button>
+<button onclick="document.getElementById('uploadInput').click()">🖼️ Upload Image</button>
+<button onclick="runOCR()">🔎 OCR image</button>
+
+<div id="preview"></div>
+<textarea id="text" placeholder="Ingredients: wheat flour, sugar, INS 621..."></textarea>
+<br>
+<button onclick="analyze()">Analyze ingredients</button>
+
+<div id="status"></div>
+<div id="results"></div>
+
+<!-- For separate hosting, define window.INGREDIENT_API_URL before this script. -->
+<script>
+const API=(window.INGREDIENT_API_URL || "").replace(/\/$/, "");
+let selectedFile=null;
+
+function selectImage(file){
+  if(!file) return;
+  selectedFile=file;
+  document.getElementById("preview").innerHTML =
+    `<img src="${URL.createObjectURL(file)}" alt="Selected package image">`;
+  status("Image selected. Click OCR image to extract ingredients.");
+}
+
+document.getElementById("cameraInput").addEventListener("change", e=>{
+  selectImage(e.target.files[0]);
+});
+
+document.getElementById("uploadInput").addEventListener("change", e=>{
+  selectImage(e.target.files[0]);
+});
+
+async function runOCR(){
+  const f=selectedFile;
+  if(!f){ alert("Choose an image first."); return; }
+  status("Running OCR...");
+  const fd=new FormData(); fd.append("file",f);
+  try{
+    const r=await fetch(API+"/ocr",{method:"POST",body:fd});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||"OCR failed");
+    document.getElementById("text").value=d.text;
+    status("OCR complete. Check/correct the text, then Analyze.");
+  }catch(e){status(e.message,true)}
+}
+
+async function analyze(){
+  const text=document.getElementById("text").value;
+  status("Analyzing...");
+  try{
+    const r=await fetch(API+"/analyze-text",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text})
+    });
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||"Analysis failed");
+    render(d.ingredients);
+    status("Analysis complete.");
+  }catch(e){status(e.message,true)}
+}
+
+function status(s,error=false){
+  document.getElementById("status").textContent=s;
+}
+
+function render(items){
+  const el=document.getElementById("results");
+  el.innerHTML="";
+  for(const x of items){
+    const div=document.createElement("div");
+    div.className="card";
+    if(!x.matched){
+      div.innerHTML=`<strong>${escapeHtml(x.raw)}</strong>
+        <p>❓ No curated match found. No safety conclusion is made.</p>`;
+    }else{
+      const i=x.ingredient;
+      div.innerHTML=`<h3>${escapeHtml(i.name)}</h3>
+        <span class="badge">${escapeHtml(i.function)}</span>
+        <span class="badge">${escapeHtml(i.concern_level)}</span>
+        ${i.allergen?'<span class="badge">⚠️ allergen</span>':''}
+        <p>${escapeHtml(i.description)}</p>
+        <small>Codes: ${escapeHtml((i.codes||[]).join(", ")||"none")} · Sources: ${escapeHtml((i.sources||[]).join(", "))}</small>`;
+    }
+    el.appendChild(div);
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+}
+</script>
+</body>
+</html>

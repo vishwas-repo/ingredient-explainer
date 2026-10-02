@@ -1,0 +1,800 @@
+[
+  {
+    "name": "Sugar",
+    "aliases": [
+      "sucrose",
+      "added sugar"
+    ],
+    "codes": [],
+    "category": "sweetener",
+    "function": "sweetener",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "A simple carbohydrate used for sweetness. Health relevance depends strongly on the amount consumed.",
+    "sources": [
+      "WHO",
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Wheat",
+    "aliases": [
+      "wheat flour",
+      "maida",
+      "atta"
+    ],
+    "codes": [],
+    "category": "cereal",
+    "function": "base ingredient",
+    "allergen": true,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A cereal ingredient. Wheat is a regulated allergen and contains gluten.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Milk",
+    "aliases": [
+      "milk solids",
+      "milk powder"
+    ],
+    "codes": [],
+    "category": "dairy",
+    "function": "ingredient",
+    "allergen": true,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "Dairy ingredient and a regulated allergen; relevant to people with milk allergy.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Peanut",
+    "aliases": [
+      "groundnut",
+      "peanuts"
+    ],
+    "codes": [],
+    "category": "nut/legume",
+    "function": "ingredient",
+    "allergen": true,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "Peanut/groundnut is a major food allergen.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Soy",
+    "aliases": [
+      "soya",
+      "soybean",
+      "soy protein"
+    ],
+    "codes": [],
+    "category": "legume",
+    "function": "ingredient",
+    "allergen": true,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "Soy is a major food allergen for susceptible people.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Palm oil",
+    "aliases": [
+      "palmolein",
+      "palm olein"
+    ],
+    "codes": [],
+    "category": "fat/oil",
+    "function": "fat",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "medium",
+    "description": "Vegetable oil used for texture, cooking and shelf stability. Dietary relevance depends on the overall saturated-fat content and amount consumed.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Citric acid",
+    "aliases": [
+      "citric acid"
+    ],
+    "codes": [
+      "INS 330",
+      "E330"
+    ],
+    "category": "additive",
+    "function": "acidity regulator",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "An acidity regulator and antioxidant commonly used in foods.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Monosodium glutamate",
+    "aliases": [
+      "MSG",
+      "monosodium glutamate"
+    ],
+    "codes": [
+      "INS 621",
+      "E621"
+    ],
+    "category": "additive",
+    "function": "flavour enhancer",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A flavour enhancer that provides umami taste. Individual sensitivity and total dietary exposure can vary.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Lecithins",
+    "aliases": [
+      "lecithin",
+      "soy lecithin"
+    ],
+    "codes": [
+      "INS 322",
+      "E322"
+    ],
+    "category": "additive",
+    "function": "emulsifier",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Emulsifiers used to help ingredients mix and maintain texture. Source matters for allergen/dietary interpretation.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Mono- and diglycerides of fatty acids",
+    "aliases": [
+      "mono and diglycerides",
+      "mono/diglycerides",
+      "mono diglycerides"
+    ],
+    "codes": [
+      "INS 471",
+      "E471"
+    ],
+    "category": "additive",
+    "function": "emulsifier",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Emulsifiers used to stabilize food texture.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sodium benzoate",
+    "aliases": [
+      "benzoate"
+    ],
+    "codes": [
+      "INS 211",
+      "E211"
+    ],
+    "category": "additive",
+    "function": "preservative",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A preservative used to inhibit microbial growth, especially in acidic foods.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Potassium sorbate",
+    "aliases": [
+      "sorbate"
+    ],
+    "codes": [
+      "INS 202",
+      "E202"
+    ],
+    "category": "additive",
+    "function": "preservative",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A preservative used to inhibit molds and yeasts.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sodium metabisulfite",
+    "aliases": [
+      "sodium metabisulphite",
+      "metabisulfite"
+    ],
+    "codes": [
+      "INS 223",
+      "E223"
+    ],
+    "category": "additive",
+    "function": "preservative",
+    "allergen": false,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A sulfite preservative. Sulfites can be relevant to susceptible people and must be considered in allergen/sensitivity contexts.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "TBHQ",
+    "aliases": [
+      "tert-butylhydroquinone"
+    ],
+    "codes": [
+      "INS 319",
+      "E319"
+    ],
+    "category": "additive",
+    "function": "antioxidant",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "An antioxidant used to delay oxidation and rancidity in fats and oils.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "BHT",
+    "aliases": [
+      "butylated hydroxytoluene"
+    ],
+    "codes": [
+      "INS 321",
+      "E321"
+    ],
+    "category": "additive",
+    "function": "antioxidant",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "An antioxidant used to protect fats from oxidation.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Caramel colour",
+    "aliases": [
+      "caramel color",
+      "caramel colouring",
+      "caramel coloring"
+    ],
+    "codes": [
+      "INS 150",
+      "E150"
+    ],
+    "category": "colour",
+    "function": "colour",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A group of food colours produced by controlled heating of carbohydrates.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Tartrazine",
+    "aliases": [
+      "tartrazine"
+    ],
+    "codes": [
+      "INS 102",
+      "E102"
+    ],
+    "category": "colour",
+    "function": "colour",
+    "allergen": false,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A synthetic yellow food colour. Some susceptible people may report sensitivity.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sunset Yellow FCF",
+    "aliases": [
+      "sunset yellow",
+      "sunset yellow fcf"
+    ],
+    "codes": [
+      "INS 110",
+      "E110"
+    ],
+    "category": "colour",
+    "function": "colour",
+    "allergen": false,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A synthetic orange-yellow food colour.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Ponceau 4R",
+    "aliases": [
+      "ponceau 4r"
+    ],
+    "codes": [
+      "INS 124",
+      "E124"
+    ],
+    "category": "colour",
+    "function": "colour",
+    "allergen": false,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A synthetic red food colour.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Aspartame",
+    "aliases": [
+      "aspartame"
+    ],
+    "codes": [
+      "INS 951",
+      "E951"
+    ],
+    "category": "sweetener",
+    "function": "intense sweetener",
+    "allergen": false,
+    "concern_level": "population_specific",
+    "evidence_level": "high",
+    "description": "A low-calorie intense sweetener. People with phenylketonuria need to avoid phenylalanine sources.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sucralose",
+    "aliases": [
+      "sucralose"
+    ],
+    "codes": [
+      "INS 955",
+      "E955"
+    ],
+    "category": "sweetener",
+    "function": "intense sweetener",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "An intense sweetener used in low amounts.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Saccharin",
+    "aliases": [
+      "saccharin"
+    ],
+    "codes": [
+      "INS 954",
+      "E954"
+    ],
+    "category": "sweetener",
+    "function": "intense sweetener",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "An intense sweetener used in small amounts.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Acesulfame potassium",
+    "aliases": [
+      "acesulfame k",
+      "acesulfame potassium",
+      "ace k"
+    ],
+    "codes": [
+      "INS 950",
+      "E950"
+    ],
+    "category": "sweetener",
+    "function": "intense sweetener",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "An intense sweetener used in low amounts.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Xanthan gum",
+    "aliases": [
+      "xanthan"
+    ],
+    "codes": [
+      "INS 415",
+      "E415"
+    ],
+    "category": "additive",
+    "function": "thickener/stabilizer",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A polysaccharide used as a thickener and stabilizer.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Guar gum",
+    "aliases": [
+      "guar"
+    ],
+    "codes": [
+      "INS 412",
+      "E412"
+    ],
+    "category": "additive",
+    "function": "thickener/stabilizer",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A plant-derived gum used to thicken and stabilize foods.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Carrageenan",
+    "aliases": [
+      "carrageenan"
+    ],
+    "codes": [
+      "INS 407",
+      "E407"
+    ],
+    "category": "additive",
+    "function": "thickener/stabilizer",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "medium",
+    "description": "A seaweed-derived polysaccharide used for thickening and texture. Evidence and conclusions can depend on the specific form and context.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Pectin",
+    "aliases": [
+      "pectin"
+    ],
+    "codes": [
+      "INS 440",
+      "E440"
+    ],
+    "category": "additive",
+    "function": "gelling agent",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A plant-derived polysaccharide used for gelling and texture.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sodium bicarbonate",
+    "aliases": [
+      "baking soda",
+      "sodium hydrogen carbonate"
+    ],
+    "codes": [
+      "INS 500(ii)",
+      "E500(ii)"
+    ],
+    "category": "additive",
+    "function": "raising agent",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A leavening/raising agent used in baked foods.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Calcium propionate",
+    "aliases": [
+      "calcium propanoate"
+    ],
+    "codes": [
+      "INS 282",
+      "E282"
+    ],
+    "category": "additive",
+    "function": "preservative",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A preservative commonly used to inhibit mold in baked foods.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sodium nitrite",
+    "aliases": [
+      "nitrite"
+    ],
+    "codes": [
+      "INS 250",
+      "E250"
+    ],
+    "category": "additive",
+    "function": "preservative/curing agent",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "A curing preservative used in some processed meats. Dietary context and amount are important.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Sodium nitrate",
+    "aliases": [
+      "nitrate"
+    ],
+    "codes": [
+      "INS 251",
+      "E251"
+    ],
+    "category": "additive",
+    "function": "preservative/curing agent",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "A nitrate additive used in some foods, including curing applications.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Ascorbic acid",
+    "aliases": [
+      "vitamin c"
+    ],
+    "codes": [
+      "INS 300",
+      "E300"
+    ],
+    "category": "additive",
+    "function": "antioxidant",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Vitamin C used as an antioxidant and flour-treatment/processing aid in some applications.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Tocopherols",
+    "aliases": [
+      "vitamin e",
+      "mixed tocopherols"
+    ],
+    "codes": [
+      "INS 306",
+      "E306"
+    ],
+    "category": "additive",
+    "function": "antioxidant",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Vitamin E compounds used as antioxidants, especially in fats and oils.",
+    "sources": [
+      "FSSAI",
+      "JECFA"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Maltodextrin",
+    "aliases": [
+      "maltodextrin"
+    ],
+    "codes": [],
+    "category": "carbohydrate",
+    "function": "bulking/carrier ingredient",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "medium",
+    "description": "A starch-derived carbohydrate used for texture, bulking and as a carrier. Its nutritional impact depends on the amount and product.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Starch",
+    "aliases": [
+      "modified starch",
+      "food starch"
+    ],
+    "codes": [],
+    "category": "carbohydrate",
+    "function": "thickener/bulking ingredient",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "A carbohydrate polymer used for texture, thickening and structure. The source should be checked when allergens matter.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Cocoa",
+    "aliases": [
+      "cocoa powder",
+      "cacao"
+    ],
+    "codes": [],
+    "category": "plant ingredient",
+    "function": "flavour/colour",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Cocoa-derived ingredient used for flavour and colour.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Yeast",
+    "aliases": [
+      "baker's yeast",
+      "bakers yeast"
+    ],
+    "codes": [],
+    "category": "microbial ingredient",
+    "function": "leavening/fermentation",
+    "allergen": false,
+    "concern_level": "generally_used",
+    "evidence_level": "high",
+    "description": "Microorganisms used to ferment dough and produce carbon dioxide for leavening.",
+    "sources": [
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Salt",
+    "aliases": [
+      "sodium chloride",
+      "common salt"
+    ],
+    "codes": [],
+    "category": "mineral",
+    "function": "seasoning",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "Sodium chloride used for taste and preservation. Total dietary sodium intake matters.",
+    "sources": [
+      "WHO",
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  },
+  {
+    "name": "Honey",
+    "aliases": [
+      "honey"
+    ],
+    "codes": [],
+    "category": "sweetener",
+    "function": "sweetener",
+    "allergen": false,
+    "concern_level": "attention",
+    "evidence_level": "high",
+    "description": "A natural sweetener. It is still a source of sugars and should not be given to infants under 12 months.",
+    "sources": [
+      "WHO",
+      "FSSAI"
+    ],
+    "last_reviewed": "2026-10-02"
+  }
+]
