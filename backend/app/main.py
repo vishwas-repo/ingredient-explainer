@@ -3,7 +3,6 @@ import json
 import re
 import io
 import os
-import difflib
 
 import cv2
 import numpy as np
@@ -72,20 +71,9 @@ if allowed_origins:
         allow_headers=["*"],
     )
 
-else:
-
-    # Development/default configuration
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
 
 # ============================================================
-# NORMALIZATION
+# TEXT NORMALIZATION
 # ============================================================
 
 def normalize(s: str) -> str:
@@ -109,643 +97,10 @@ def normalize(s: str) -> str:
 
 
 # ============================================================
-# BUILD INGREDIENT DICTIONARY
-# ============================================================
-
-def build_alias_map():
-
-    result = {}
-
-    for item in INGREDIENTS:
-
-        if not isinstance(item, dict):
-            continue
-
-        names = []
-
-        name = item.get(
-            "name",
-            ""
-        )
-
-        if name:
-            names.append(name)
-
-        aliases = item.get(
-            "aliases",
-            []
-        )
-
-        if isinstance(
-            aliases,
-            list
-        ):
-            names.extend(
-                aliases
-            )
-
-        codes = item.get(
-            "codes",
-            []
-        )
-
-        if isinstance(
-            codes,
-            list
-        ):
-            names.extend(
-                codes
-            )
-
-        for value in names:
-
-            if not isinstance(
-                value,
-                str
-            ):
-                continue
-
-            n = normalize(
-                value
-            )
-
-            if n:
-
-                result[n] = item
-
-    return result
-
-
-ALIAS_MAP = build_alias_map()
-
-
-# ============================================================
-# OCR CORRECTION DICTIONARY
-# ============================================================
-
-def build_ocr_dictionary():
-
-    """
-    Build a dictionary of words/phrases that are likely to
-    appear in ingredient lists.
-
-    We use:
-        - ingredient names
-        - aliases
-        - ingredient codes
-
-    Multi-word ingredient names are retained as phrases.
-    Individual words are also extracted for word-level OCR
-    correction.
-    """
-
-    phrases = set()
-    words = set()
-
-    for item in INGREDIENTS:
-
-        if not isinstance(item, dict):
-            continue
-
-        values = []
-
-        name = item.get(
-            "name",
-            ""
-        )
-
-        if name:
-            values.append(name)
-
-        aliases = item.get(
-            "aliases",
-            []
-        )
-
-        if isinstance(
-            aliases,
-            list
-        ):
-            values.extend(
-                aliases
-            )
-
-        codes = item.get(
-            "codes",
-            []
-        )
-
-        if isinstance(
-            codes,
-            list
-        ):
-            values.extend(
-                codes
-            )
-
-        for value in values:
-
-            if not isinstance(
-                value,
-                str
-            ):
-                continue
-
-            normalized = normalize(
-                value
-            )
-
-            if not normalized:
-                continue
-
-            phrases.add(
-                normalized
-            )
-
-            for word in normalized.split():
-
-                # Ignore very short words because correcting
-                # "oil" or "salt" from a single bad character
-                # can easily create false positives.
-                if len(word) >= 4:
-
-                    words.add(
-                        word
-                    )
-
-    return (
-        sorted(
-            phrases,
-            key=len,
-            reverse=True
-        ),
-        sorted(
-            words,
-            key=len,
-            reverse=True
-        )
-    )
-
-
-OCR_DICTIONARY_PHRASES, OCR_DICTIONARY_WORDS = (
-    build_ocr_dictionary()
-)
-
-
-# ============================================================
-# COMMON FOOD-LABEL WORDS
-# ============================================================
-#
-# These are useful even if they are not present in the
-# current ingredients.json.
-#
-# They are deliberately limited to common label vocabulary.
-# ============================================================
-
-COMMON_FOOD_WORDS = {
-    "ingredients",
-    "ingredient",
-    "refined",
-    "sunflower",
-    "oil",
-    "red",
-    "chilli",
-    "chillies",
-    "garlic",
-    "onion",
-    "celery",
-    "soy",
-    "sauce",
-    "iodized",
-    "iodised",
-    "salt",
-    "sugar",
-    "mixed",
-    "spices",
-    "spice",
-    "condiments",
-    "condiment",
-    "wheat",
-    "milk",
-    "flour",
-    "starch",
-    "preservative",
-    "flavour",
-    "flavor",
-    "emulsifier",
-    "acid",
-    "citric",
-    "sodium",
-    "calcium",
-    "vitamin",
-    "extract",
-    "colour",
-    "color",
-    "contains",
-    "allergen",
-}
-
-
-# ============================================================
-# INGREDIENT MATCHING
-# ============================================================
-
-def match_ingredient(raw: str):
-
-    n = normalize(
-        raw
-    )
-
-    if not n:
-        return None
-
-    # Exact match
-    if n in ALIAS_MAP:
-
-        return ALIAS_MAP[n]
-
-    # E-number / code matching
-    code = re.sub(
-        r"\s+",
-        "",
-        n
-    ).upper()
-
-    for item in INGREDIENTS:
-
-        if not isinstance(
-            item,
-            dict
-        ):
-            continue
-
-        for c in item.get(
-            "codes",
-            []
-        ):
-
-            if not isinstance(
-                c,
-                str
-            ):
-                continue
-
-            if re.sub(
-                r"\s+",
-                "",
-                c
-            ).upper() == code:
-
-                return item
-
-    # Partial match
-    for alias, item in sorted(
-        ALIAS_MAP.items(),
-        key=lambda x: len(x[0]),
-        reverse=True
-    ):
-
-        if len(alias) >= 4:
-
-            if alias in n:
-                return item
-
-    return None
-
-
-# ============================================================
-# FUZZY OCR CORRECTION
-# ============================================================
-
-def fuzzy_correct_word(
-    word: str,
-    threshold: float = 0.84
-):
-    """
-    Correct a single OCR word against the ingredient
-    dictionary.
-
-    Example:
-
-        sunflowar -> sunflower
-        chillles  -> chillies
-        iodizcd   -> iodized
-
-    The correction is conservative.
-
-    Returns:
-        corrected_word, confidence
-
-    or:
-        original_word, 0.0
-    """
-
-    if not word:
-        return word, 0.0
-
-    # Preserve punctuation around the word
-    prefix_match = re.match(
-        r"^[^A-Za-z0-9]*",
-        word
-    )
-
-    suffix_match = re.search(
-        r"[^A-Za-z0-9]*$",
-        word
-    )
-
-    prefix = (
-        prefix_match.group(0)
-        if prefix_match
-        else ""
-    )
-
-    suffix = (
-        suffix_match.group(0)
-        if suffix_match
-        else ""
-    )
-
-    core = word[
-        len(prefix):
-        len(word) - len(suffix)
-        if suffix
-        else len(word)
-    ]
-
-    if not core:
-        return word, 0.0
-
-    normalized = normalize(
-        core
-    )
-
-    if not normalized:
-        return word, 0.0
-
-    # Never modify very short words.
-    if len(normalized) < 5:
-        return word, 0.0
-
-    # Already a known word.
-    if normalized in COMMON_FOOD_WORDS:
-        return word, 1.0
-
-    if normalized in OCR_DICTIONARY_WORDS:
-        return word, 1.0
-
-    # --------------------------------------------------------
-    # Candidate list
-    # --------------------------------------------------------
-
-    candidates = set(
-        OCR_DICTIONARY_WORDS
-    )
-
-    candidates.update(
-        COMMON_FOOD_WORDS
-    )
-
-    # Don't compare a word against completely unrelated
-    # word lengths.
-    candidates = [
-        candidate
-        for candidate in candidates
-        if abs(
-            len(candidate)
-            - len(normalized)
-        ) <= 3
-    ]
-
-    if not candidates:
-        return word, 0.0
-
-    # --------------------------------------------------------
-    # Find closest candidate
-    # --------------------------------------------------------
-
-    best = None
-    best_score = 0.0
-
-    for candidate in candidates:
-
-        score = difflib.SequenceMatcher(
-            None,
-            normalized,
-            candidate
-        ).ratio()
-
-        if score > best_score:
-
-            best_score = score
-            best = candidate
-
-    if (
-        best is None
-        or best_score < threshold
-    ):
-
-        return word, best_score
-
-    # Preserve original capitalization style
-    if core.isupper():
-
-        corrected = best.upper()
-
-    elif core[:1].isupper():
-
-        corrected = (
-            best[:1].upper()
-            + best[1:]
-        )
-
-    else:
-
-        corrected = best
-
-    return (
-        prefix
-        + corrected
-        + suffix,
-        best_score
-    )
-
-
-# ============================================================
-# CORRECT OCR TEXT
-# ============================================================
-
-def correct_ocr_text(
-    text: str
-):
-    """
-    Correct OCR spelling errors using the ingredient
-    dictionary.
-
-    This operates on individual words and is intentionally
-    conservative.
-
-    Multi-word ingredient names are handled later by the
-    ingredient matcher.
-    """
-
-    if not text:
-        return text
-
-    lines = []
-
-    for line in text.splitlines():
-
-        words = re.findall(
-            r"[A-Za-z0-9]+|[^A-Za-z0-9]+",
-            line
-        )
-
-        corrected_parts = []
-
-        for part in words:
-
-            # Only attempt correction on alphabetic words.
-            if re.fullmatch(
-                r"[A-Za-z]+",
-                part
-            ):
-
-                corrected, score = (
-                    fuzzy_correct_word(
-                        part
-                    )
-                )
-
-                corrected_parts.append(
-                    corrected
-                )
-
-            else:
-
-                corrected_parts.append(
-                    part
-                )
-
-        lines.append(
-            "".join(
-                corrected_parts
-            )
-        )
-
-    return "\n".join(
-        lines
-    )
-
-
-# ============================================================
-# PHRASE-LEVEL OCR CORRECTION
-# ============================================================
-
-def correct_common_ocr_phrases(
-    text: str
-):
-    """
-    Correct common multi-word OCR errors using known
-    ingredient phrases.
-
-    Example:
-
-        "sun flowar oil"
-             ->
-        "sunflower oil"
-
-    This is conservative and only applies to phrases that
-    are already in the ingredient dictionary.
-    """
-
-    if not text:
-        return text
-
-    result = text
-
-    # Process longer phrases first.
-    for phrase in OCR_DICTIONARY_PHRASES:
-
-        if len(
-            phrase.split()
-        ) < 2:
-
-            continue
-
-        # Only consider phrases with reasonably meaningful
-        # lengths.
-        if len(phrase) < 8:
-            continue
-
-        words = phrase.split()
-
-        # Build a flexible OCR pattern.
-        pattern_parts = []
-
-        for word in words:
-
-            pattern_parts.append(
-                r"\b"
-                + re.escape(
-                    word
-                )
-                + r"\b"
-            )
-
-        pattern = r"\s+".join(
-            pattern_parts
-        )
-
-        try:
-
-            result = re.sub(
-                pattern,
-                phrase,
-                result,
-                flags=re.I
-            )
-
-        except re.error:
-            continue
-
-    return result
-
-
-# ============================================================
-# COMPLETE OCR CORRECTION
-# ============================================================
-
-def apply_ocr_correction(
-    text: str
-):
-    """
-    Run phrase and word level correction.
-    """
-
-    if not text:
-        return ""
-
-    # First correct individual words.
-    corrected = correct_ocr_text(
-        text
-    )
-
-    # Then normalize known phrases.
-    corrected = correct_common_ocr_phrases(
-        corrected
-    )
-
-    return corrected
-
-
-# ============================================================
 # SPLIT INGREDIENTS
 # ============================================================
 
-def split_ingredients(
-    text: str
-):
+def split_ingredients(text: str):
 
     if not text:
         return []
@@ -760,13 +115,13 @@ def split_ingredients(
         flags=re.I
     )
 
-    # Remove common OCR bullet
+    # Remove common OCR punctuation artifacts
     text = text.replace(
         "•",
         ","
     )
 
-    # Split on commas, semicolons and line breaks.
+    # Split
     parts = re.split(
         r"[,;\n]+",
         text
@@ -781,20 +136,98 @@ def split_ingredients(
         )
 
         if part:
-            result.append(
-                part
-            )
+            result.append(part)
 
     return result
+
+
+# ============================================================
+# INGREDIENT DATABASE
+# ============================================================
+
+def build_alias_map():
+
+    result = {}
+
+    for item in INGREDIENTS:
+
+        names = (
+            [item.get("name", "")]
+            + item.get("aliases", [])
+            + item.get("codes", [])
+        )
+
+        for name in names:
+
+            if name:
+
+                result[
+                    normalize(name)
+                ] = item
+
+    return result
+
+
+ALIAS_MAP = build_alias_map()
+
+
+def match_ingredient(raw: str):
+
+    n = normalize(raw)
+
+    if not n:
+        return None
+
+    # --------------------------------------------------------
+    # Exact match
+    # --------------------------------------------------------
+
+    if n in ALIAS_MAP:
+        return ALIAS_MAP[n]
+
+    # --------------------------------------------------------
+    # Code / E-number matching
+    # --------------------------------------------------------
+
+    code = re.sub(
+        r"\s+",
+        "",
+        n
+    ).upper()
+
+    for item in INGREDIENTS:
+
+        for c in item.get("codes", []):
+
+            if re.sub(
+                r"\s+",
+                "",
+                c
+            ).upper() == code:
+
+                return item
+
+    # --------------------------------------------------------
+    # Partial match
+    # --------------------------------------------------------
+
+    for alias, item in sorted(
+        ALIAS_MAP.items(),
+        key=lambda x: len(x[0]),
+        reverse=True
+    ):
+
+        if len(alias) >= 4 and alias in n:
+            return item
+
+    return None
 
 
 # ============================================================
 # ANALYZE INGREDIENT TEXT
 # ============================================================
 
-def analyze_ingredient_text(
-    text: str
-):
+def analyze_ingredient_text(text: str):
 
     parts = split_ingredients(
         text
@@ -818,7 +251,70 @@ def analyze_ingredient_text(
 
 
 # ============================================================
-# READ IMAGE
+# ROUTES
+# ============================================================
+
+@app.get("/")
+def root():
+
+    if FRONTEND_PATH.exists():
+
+        return FileResponse(
+            FRONTEND_PATH
+        )
+
+    return {
+        "name": "Ingredient Explainer API",
+        "version": "0.3"
+    }
+
+
+@app.get("/health")
+def health():
+
+    return {
+        "status": "ok",
+        "version": "0.3"
+    }
+
+
+@app.get("/ingredients")
+def ingredients():
+
+    return {
+        "count": len(INGREDIENTS),
+        "items": INGREDIENTS
+    }
+
+
+@app.post("/analyze-text")
+def analyze_text(payload: dict):
+
+    text = payload.get(
+        "text",
+        ""
+    )
+
+    if not isinstance(
+        text,
+        str
+    ) or not text.strip():
+
+        raise HTTPException(
+            status_code=400,
+            detail="text is required"
+        )
+
+    return {
+        "input": text,
+        "ingredients": analyze_ingredient_text(
+            text
+        )
+    }
+
+
+# ============================================================
+# READ UPLOADED IMAGE
 # ============================================================
 
 async def read_image(
@@ -870,6 +366,8 @@ def resize_for_ocr(
 
     height, width = image.shape[:2]
 
+    # Large phone photographs don't need to be
+    # processed at their original resolution.
     if width > target_width:
 
         scale = (
@@ -904,16 +402,17 @@ def resize_for_ocr(
 
 
 # ============================================================
-# GREEN CHANNEL ENHANCEMENT
+# PREPROCESSING
 # ============================================================
 
-def enhance_green_channel(
-    image
-):
+def enhance_green_channel(image):
 
     """
-    Yellow text on red/orange labels tends to have better
-    contrast in the green channel.
+    Extract and enhance the green channel.
+
+    Yellow text on red/orange packaging generally has
+    substantially better contrast in the green channel
+    than in normal grayscale.
     """
 
     b, g, r = cv2.split(
@@ -931,6 +430,7 @@ def enhance_green_channel(
         gray
     )
 
+    # Mild sharpening
     blur = cv2.GaussianBlur(
         gray,
         (0, 0),
@@ -948,13 +448,14 @@ def enhance_green_channel(
     return gray
 
 
-# ============================================================
-# YELLOW TEXT MASK
-# ============================================================
+def make_yellow_text_mask(image):
 
-def make_yellow_text_mask(
-    image
-):
+    """
+    Create a mask for yellow/yellow-green text.
+
+    This is particularly useful for labels with yellow
+    lettering on red/orange backgrounds.
+    """
 
     hsv = cv2.cvtColor(
         image,
@@ -992,88 +493,10 @@ def make_yellow_text_mask(
 
 
 # ============================================================
-# CLEAN OCR TEXT
+# FIND "INGREDIENTS"
 # ============================================================
 
-def clean_ocr_text(
-    text
-):
-
-    if not text:
-        return ""
-
-    text = text.replace(
-        "\r\n",
-        "\n"
-    )
-
-    text = text.replace(
-        "\r",
-        "\n"
-    )
-
-    text = text.replace(
-        "\t",
-        " "
-    )
-
-    replacements = {
-        "®": "",
-        "™": "",
-        "©": "",
-        "¢": "c",
-    }
-
-    for old, new in replacements.items():
-
-        text = text.replace(
-            old,
-            new
-        )
-
-    text = re.sub(
-        r"[ ]{2,}",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text
-    )
-
-    lines = []
-
-    for line in text.splitlines():
-
-        line = line.strip()
-
-        if not line:
-            continue
-
-        if re.fullmatch(
-            r"[^A-Za-z0-9]+",
-            line
-        ):
-            continue
-
-        lines.append(
-            line
-        )
-
-    return "\n".join(
-        lines
-    )
-
-
-# ============================================================
-# DETECT INGREDIENTS WORD
-# ============================================================
-
-def is_ingredients_word(
-    text
-):
+def is_ingredients_word(text):
 
     if not text:
         return False
@@ -1084,6 +507,7 @@ def is_ingredients_word(
         text
     ).upper()
 
+    # Exact / near-exact forms
     possible = [
         "INGREDIENT",
         "INGREDIENTS",
@@ -1098,24 +522,28 @@ def is_ingredients_word(
         if word in cleaned:
             return True
 
-    # Tolerate some OCR errors.
+    # Handle OCR errors with high similarity
     if (
         "INGRED" in cleaned
         and len(cleaned) >= 7
     ):
-
         return True
 
     return False
 
 
-# ============================================================
-# LOCATE INGREDIENTS WORD
-# ============================================================
-
 def find_ingredients_word(
     image
 ):
+
+    """
+    Locate the INGREDIENTS word using OCR bounding boxes.
+
+    Returns:
+        x, y, width, height
+
+    or None if not found.
+    """
 
     data = pytesseract.image_to_data(
         image,
@@ -1194,19 +622,26 @@ def find_ingredients_word(
 
 
 # ============================================================
-# LOCATE INGREDIENT REGION
+# FIND INGREDIENT REGION
 # ============================================================
 
 def locate_ingredient_region(
     image
 ):
 
+    """
+    First searches the lower portion of the image because
+    ingredient lists are commonly located there.
+
+    If that fails, searches the complete image.
+
+    This keeps OCR fast for typical package photographs.
+    """
+
     h, w = image.shape[:2]
 
     # --------------------------------------------------------
-    # First search lower 55%.
-    # This avoids processing the whole image in the usual
-    # case.
+    # First attempt: lower 55%
     # --------------------------------------------------------
 
     lower_y = int(
@@ -1230,6 +665,8 @@ def locate_ingredient_region(
 
         x, y, fw, fh = found
 
+        # Convert lower-region coordinates back
+        # to complete-image coordinates.
         absolute_y = (
             lower_y + y
         )
@@ -1242,7 +679,7 @@ def locate_ingredient_region(
         )
 
     # --------------------------------------------------------
-    # Search entire image if necessary.
+    # Second attempt: complete image
     # --------------------------------------------------------
 
     enhanced = enhance_green_channel(
@@ -1254,6 +691,7 @@ def locate_ingredient_region(
     )
 
     if found is not None:
+
         return found
 
     return None
@@ -1272,27 +710,42 @@ def crop_ingredient_region(
 
     x, y, word_w, word_h = location
 
-    # Give some margin before heading.
+    # --------------------------------------------------------
+    # Horizontal crop
+    #
+    # Start slightly before "INGREDIENTS".
+    #
+    # Don't include the extreme right-hand side of the
+    # package because that may contain graphics or another
+    # panel.
+    # --------------------------------------------------------
+
     x1 = max(
         0,
-        x - 50
+        x - 40
     )
 
-    # Ingredient lists can span most of the package.
+    # The ingredient text usually extends substantially
+    # to the right of the heading.
     x2 = min(
         w,
-        x + 1250
+        x + 950
     )
+
+    # --------------------------------------------------------
+    # Vertical crop
+    # --------------------------------------------------------
 
     y1 = max(
         0,
-        y - 30
+        y - 25
     )
 
-    # Allow several lines after INGREDIENTS.
+    # Include enough space for several lines of ingredients
+    # and the allergen heading so we can remove the latter.
     y2 = min(
         h,
-        y + 480
+        y + 430
     )
 
     return image[
@@ -1302,164 +755,82 @@ def crop_ingredient_region(
 
 
 # ============================================================
-# OCR SCORE
+# OCR CLEANUP
 # ============================================================
 
-def score_ocr_text(
+def clean_ocr_text(
     text
 ):
 
     if not text:
-        return -999
+        return ""
 
-    score = 0
-
-    lower = text.lower()
-
-    if "ingredient" in lower:
-        score += 30
-
-    keywords = [
-        "sunflower",
-        "oil",
-        "chilli",
-        "chillies",
-        "garlic",
-        "onion",
-        "celery",
-        "soy",
-        "sauce",
-        "iodized",
-        "iodised",
-        "salt",
-        "sugar",
-        "spice",
-        "spices",
-        "condiment",
-        "condiments",
-        "wheat",
-        "milk",
-        "flour",
-        "starch",
-        "preservative",
-        "flavour",
-        "flavor",
-        "emulsifier",
-        "acid",
-        "citric",
-        "sodium",
-        "calcium",
-        "vitamin",
-        "extract",
-        "colour",
-        "color"
-    ]
-
-    for word in keywords:
-
-        if word in lower:
-            score += 5
-
-    if len(text) > 30:
-        score += 5
-
-    if len(text) > 100:
-        score += 5
-
-    alphanumeric = sum(
-        c.isalnum()
-        for c in text
+    text = text.replace(
+        "\r\n",
+        "\n"
     )
 
-    if len(text):
+    text = text.replace(
+        "\r",
+        "\n"
+    )
 
-        ratio = (
-            alphanumeric
-            / len(text)
+    text = text.replace(
+        "\t",
+        " "
+    )
+
+    # Common OCR artifacts
+    replacements = {
+        "®": "",
+        "™": "",
+        "©": "",
+        "¢": "c",
+    }
+
+    for old, new in replacements.items():
+
+        text = text.replace(
+            old,
+            new
         )
 
-        if ratio > 0.50:
-            score += 5
-
-        if ratio > 0.70:
-            score += 5
-
-    return score
-
-
-# ============================================================
-# OCR TARGET REGION
-# ============================================================
-
-def ocr_ingredient_region(
-    crop
-):
-
-    # --------------------------------------------------------
-    # PASS 1: Green channel
-    # --------------------------------------------------------
-
-    green = enhance_green_channel(
-        crop
+    # Normalize spaces
+    text = re.sub(
+        r"[ ]{2,}",
+        " ",
+        text
     )
 
-    text1 = pytesseract.image_to_string(
-        green,
-        config=(
-            "--oem 3 "
-            "--psm 6 "
-            "-c preserve_interword_spaces=1"
+    # Remove excessive blank lines
+    text = re.sub(
+        r"\n{3,}",
+        "\n\n",
+        text
+    )
+
+    lines = []
+
+    for line in text.splitlines():
+
+        line = line.strip()
+
+        if not line:
+            continue
+
+        if re.fullmatch(
+            r"[^A-Za-z0-9]+",
+            line
+        ):
+            continue
+
+        lines.append(
+            line
         )
+
+    return "\n".join(
+        lines
     )
-
-    text1 = clean_ocr_text(
-        text1
-    )
-
-    score1 = score_ocr_text(
-        text1
-    )
-
-    # --------------------------------------------------------
-    # If clearly good, don't perform another expensive OCR.
-    # --------------------------------------------------------
-
-    if (
-        "ingredient" in text1.lower()
-        and score1 >= 35
-    ):
-
-        return text1
-
-    # --------------------------------------------------------
-    # PASS 2: Yellow mask
-    # --------------------------------------------------------
-
-    mask = make_yellow_text_mask(
-        crop
-    )
-
-    text2 = pytesseract.image_to_string(
-        mask,
-        config=(
-            "--oem 3 "
-            "--psm 11 "
-            "-c preserve_interword_spaces=1"
-        )
-    )
-
-    text2 = clean_ocr_text(
-        text2
-    )
-
-    score2 = score_ocr_text(
-        text2
-    )
-
-    if score2 > score1:
-        return text2
-
-    return text1
 
 
 # ============================================================
@@ -1478,7 +849,7 @@ def extract_ingredients_section(
     )
 
     # --------------------------------------------------------
-    # Find heading
+    # Locate INGREDIENTS heading
     # --------------------------------------------------------
 
     match = re.search(
@@ -1494,7 +865,7 @@ def extract_ingredients_section(
         ].strip()
 
     # --------------------------------------------------------
-    # Stop at allergen / nutrition / other headings
+    # Remove everything after common following headings
     # --------------------------------------------------------
 
     stop_patterns = [
@@ -1531,7 +902,170 @@ def extract_ingredients_section(
 
 
 # ============================================================
-# MAIN OCR PIPELINE
+# OCR SCORE
+# ============================================================
+
+def score_ocr_text(
+    text
+):
+
+    if not text:
+        return -999
+
+    score = 0
+
+    lower = text.lower()
+
+    # Strong signal
+    if "ingredient" in lower:
+        score += 30
+
+    # Food-related vocabulary
+    keywords = [
+        "sunflower",
+        "oil",
+        "chilli",
+        "chillies",
+        "garlic",
+        "onion",
+        "celery",
+        "soy",
+        "sauce",
+        "salt",
+        "sugar",
+        "spice",
+        "flour",
+        "wheat",
+        "milk",
+        "starch",
+        "preservative",
+        "flavour",
+        "flavor",
+        "condiment"
+    ]
+
+    for word in keywords:
+
+        if word in lower:
+            score += 5
+
+    # Useful text length
+    if len(text) > 30:
+        score += 5
+
+    if len(text) > 100:
+        score += 5
+
+    # Alphanumeric ratio
+    alphanumeric = sum(
+        c.isalnum()
+        for c in text
+    )
+
+    if len(text):
+
+        ratio = (
+            alphanumeric
+            / len(text)
+        )
+
+        if ratio > 0.50:
+            score += 5
+
+        if ratio > 0.70:
+            score += 5
+
+    return score
+
+
+# ============================================================
+# OCR INGREDIENT REGION
+# ============================================================
+
+def ocr_ingredient_region(
+    crop
+):
+
+    # --------------------------------------------------------
+    # METHOD 1
+    #
+    # Green channel.
+    # --------------------------------------------------------
+
+    green = enhance_green_channel(
+        crop
+    )
+
+    text1 = pytesseract.image_to_string(
+        green,
+        config=(
+            "--oem 3 "
+            "--psm 6 "
+            "-c preserve_interword_spaces=1"
+        )
+    )
+
+    text1 = clean_ocr_text(
+        text1
+    )
+
+    score1 = score_ocr_text(
+        text1
+    )
+
+    # --------------------------------------------------------
+    # If the first result is clearly good, stop.
+    # --------------------------------------------------------
+
+    if (
+        "ingredient" in text1.lower()
+        and score1 >= 35
+    ):
+
+        return text1
+
+    # --------------------------------------------------------
+    # METHOD 2
+    #
+    # Yellow-text color mask.
+    #
+    # Useful for red/orange packages with yellow lettering.
+    # --------------------------------------------------------
+
+    mask = make_yellow_text_mask(
+        crop
+    )
+
+    text2 = pytesseract.image_to_string(
+        mask,
+        config=(
+            "--oem 3 "
+            "--psm 11 "
+            "-c preserve_interword_spaces=1"
+        )
+    )
+
+    text2 = clean_ocr_text(
+        text2
+    )
+
+    score2 = score_ocr_text(
+        text2
+    )
+
+    # --------------------------------------------------------
+    # Select better result.
+    # --------------------------------------------------------
+
+    if score2 > score1:
+
+        return text2
+
+    return text1
+
+
+# ============================================================
+# MAIN OCR
 # ============================================================
 
 def perform_ocr(
@@ -1539,7 +1073,7 @@ def perform_ocr(
 ):
 
     # --------------------------------------------------------
-    # Resize once
+    # Resize first
     # --------------------------------------------------------
 
     image = resize_for_ocr(
@@ -1547,12 +1081,16 @@ def perform_ocr(
     )
 
     # --------------------------------------------------------
-    # Locate INGREDIENTS
+    # Find INGREDIENTS
     # --------------------------------------------------------
 
     location = locate_ingredient_region(
         image
     )
+
+    # --------------------------------------------------------
+    # Targeted OCR
+    # --------------------------------------------------------
 
     if location is not None:
 
@@ -1561,24 +1099,15 @@ def perform_ocr(
             location
         )
 
-        raw_text = ocr_ingredient_region(
+        text = ocr_ingredient_region(
             crop
         )
 
-        # ----------------------------------------------------
-        # IMPORTANT:
-        # Correct OCR before extracting individual
-        # ingredients.
-        # ----------------------------------------------------
-
-        corrected_text = apply_ocr_correction(
-            raw_text
-        )
-
         ingredients = extract_ingredients_section(
-            corrected_text
+            text
         )
 
+        # Good targeted result
         if (
             len(ingredients) >= 20
             and len(
@@ -1590,6 +1119,9 @@ def perform_ocr(
 
     # ========================================================
     # FALLBACK
+    #
+    # If automatic location failed, OCR the lower part of
+    # the complete image.
     # ========================================================
 
     h, w = image.shape[:2]
@@ -1616,15 +1148,12 @@ def perform_ocr(
         fallback
     )
 
-    fallback = apply_ocr_correction(
-        fallback
-    )
-
     ingredients = extract_ingredients_section(
         fallback
     )
 
     if ingredients:
+
         return ingredients
 
     return fallback
