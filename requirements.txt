@@ -5,3 +5,4 @@ pillow>=10,<12
 pytesseract>=0.3.13,<1
 numpy>=1.26,<3
 opencv-python-headless>=4.10,<5
+easyocr>=1.7,<2
