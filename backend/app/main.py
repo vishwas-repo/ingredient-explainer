@@ -1022,14 +1022,47 @@ def perform_ocr(image):
         if len(ingredients) >= 8:
             return correct_ocr_with_database(ingredients)
 
-    # Fallback suited to common labels: OCR the bottom 45% where ingredients
-    # and allergen text usually appear, rather than the full high-detail photo.
+    # Fallback 1: OCR the lower label, where ingredient lists commonly appear.
     h, w = image.shape[:2]
     lower = image[int(h * 0.55):h, :]
     fallback = ocr_ingredient_region(lower)
     extracted = extract_ingredients_section(fallback)
-    result = extracted if extracted else fallback
-    return correct_ocr_with_database(result)
+    result = extracted if len(extracted.strip()) >= 8 else fallback
+    if len(re.sub(r"[^A-Za-z0-9]", "", result)) >= 12:
+        return correct_ocr_with_database(result)
+
+    # Fallback 2: fixed, compact crop around the ingredient line. This avoids
+    # relying on Tesseract correctly locating the word INGREDIENTS first.
+    # Keep the crop broad enough for differently positioned package labels.
+    y0, y1 = int(h * 0.57), int(h * 0.78)
+    x0, x1 = int(w * 0.10), int(w * 0.92)
+    panel = image[y0:y1, x0:x1]
+    panel_text = ocr_ingredient_region(panel)
+    panel_extracted = extract_ingredients_section(panel_text)
+    result = panel_extracted if len(panel_extracted.strip()) >= 8 else panel_text
+
+    # Final fallback: OCR a downscaled full image only if all targeted attempts
+    # returned no usable text. This is bounded and prevents a false success
+    # with an empty textbox.
+    if len(re.sub(r"[^A-Za-z0-9]", "", result)) < 12:
+        full = resize_for_ocr(image, target_width=1000)
+        try:
+            full_text = clean_ocr_text(pytesseract.image_to_string(
+                cv2.cvtColor(full, cv2.COLOR_BGR2GRAY) if full.ndim == 3 else full,
+                config="--oem 1 --psm 11", timeout=8
+            ))
+            full_extracted = extract_ingredients_section(full_text)
+            result = full_extracted if len(full_extracted.strip()) >= 8 else full_text
+        except (RuntimeError, pytesseract.TesseractError):
+            pass
+
+    result = correct_ocr_with_database(result).strip()
+    if not result:
+        raise HTTPException(
+            status_code=422,
+            detail="No readable text found. Try a closer, sharper photo of the ingredients label."
+        )
+    return result
 
 
 # ============================================================

@@ -59,17 +59,48 @@ document.getElementById("uploadInput").addEventListener("change", e=>{
 });
 
 async function runOCR(){
-  const f=selectedFile;
-  if(!f){ alert("Choose an image first."); return; }
+  const f = selectedFile;
+  if (!f) {
+    alert("Choose an image first.");
+    return;
+  }
+
+  const textBox = document.getElementById("text");
   status("Running OCR...");
-  const fd=new FormData(); fd.append("file",f);
-  try{
-    const r=await fetch(API+"/ocr",{method:"POST",body:fd});
-    const d=await r.json();
-    if(!r.ok) throw new Error(d.detail||"OCR failed");
-    document.getElementById("text").value=d.text;
-    status("OCR complete. Check/correct the text, then Analyze.");
-  }catch(e){status(e.message,true)}
+  const fd = new FormData();
+  fd.append("file", f);
+
+  try {
+    const r = await fetch(API + "/ocr", { method: "POST", body: fd });
+
+    // Handle non-JSON responses too (for example, a server/proxy error page).
+    const responseBody = await r.text();
+    let d;
+    try {
+      d = JSON.parse(responseBody);
+    } catch {
+      throw new Error(`OCR server returned an unexpected response (HTTP ${r.status}). Check that the backend is running and the API URL is correct.`);
+    }
+
+    if (!r.ok) {
+      throw new Error(d.detail || `OCR failed (HTTP ${r.status})`);
+    }
+
+    // Do not report success if the backend returned no usable text.
+    const extracted = typeof d.text === "string" ? d.text.trim() : "";
+    if (!extracted) {
+      throw new Error(
+        "OCR returned an empty result. The image was received, but no ingredient text was extracted. Try a closer, sharper photo focused on the ingredients panel."
+      );
+    }
+
+    textBox.value = extracted;
+    textBox.dispatchEvent(new Event("input", { bubbles: true }));
+    status(`OCR complete (${extracted.length} characters). Check/correct the text, then Analyze.`);
+    textBox.focus();
+  } catch (e) {
+    status(e.message || "OCR failed. Check the backend terminal for details.", true);
+  }
 }
 
 async function analyze(){
@@ -88,8 +119,11 @@ async function analyze(){
   }catch(e){status(e.message,true)}
 }
 
-function status(s,error=false){
-  document.getElementById("status").textContent=s;
+function status(s, error = false) {
+  const el = document.getElementById("status");
+  el.textContent = s;
+  el.style.color = error ? "#b00020" : "";
+  el.setAttribute("role", error ? "alert" : "status");
 }
 
 function render(items){
