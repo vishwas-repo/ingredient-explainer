@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import re
+import difflib
 import io
 import os
 
@@ -359,45 +360,17 @@ async def read_image(
 # RESIZE
 # ============================================================
 
-def resize_for_ocr(
-    image,
-    target_width=1800
-):
-
+def resize_for_ocr(image, target_width=1600):
+    """Keep OCR input bounded for speed while preserving small label text."""
     height, width = image.shape[:2]
-
-    # Large phone photographs don't need to be
-    # processed at their original resolution.
     if width > target_width:
-
-        scale = (
-            target_width
-            / float(width)
-        )
-
-        image = cv2.resize(
-            image,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_AREA
-        )
-
-    elif width < 900:
-
-        scale = (
-            1400
-            / float(width)
-        )
-
-        image = cv2.resize(
-            image,
-            None,
-            fx=scale,
-            fy=scale,
-            interpolation=cv2.INTER_CUBIC
-        )
-
+        scale = target_width / float(width)
+        image = cv2.resize(image, None, fx=scale, fy=scale,
+                           interpolation=cv2.INTER_AREA)
+    elif width < 1000:
+        scale = min(1.5, 1200 / float(width))
+        image = cv2.resize(image, None, fx=scale, fy=scale,
+                           interpolation=cv2.INTER_CUBIC)
     return image
 
 
@@ -625,133 +598,56 @@ def find_ingredients_word(
 # FIND INGREDIENT REGION
 # ============================================================
 
-def locate_ingredient_region(
-    image
-):
-
+def locate_ingredient_region(image):
     """
-    First searches the lower portion of the image because
-    ingredient lists are commonly located there.
-
-    If that fails, searches the complete image.
-
-    This keeps OCR fast for typical package photographs.
+    Find the heading anywhere in the image with one OCR layout pass.
+    Returns x, y, width, height in the supplied image's coordinates.
     """
-
-    h, w = image.shape[:2]
-
-    # --------------------------------------------------------
-    # First attempt: lower 55%
-    # --------------------------------------------------------
-
-    lower_y = int(
-        h * 0.45
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Avoid expensive multi-method preprocessing for the heading pass.
+    data = pytesseract.image_to_data(
+        gray,
+        config="--oem 3 --psm 11",
+        output_type=pytesseract.Output.DICT,
+        timeout=12,
     )
 
-    lower = image[
-        lower_y:h,
-        0:w
-    ]
-
-    enhanced = enhance_green_channel(
-        lower
-    )
-
-    found = find_ingredients_word(
-        enhanced
-    )
-
-    if found is not None:
-
-        x, y, fw, fh = found
-
-        # Convert lower-region coordinates back
-        # to complete-image coordinates.
-        absolute_y = (
-            lower_y + y
+    best = None
+    for i, raw in enumerate(data.get("text", [])):
+        if not is_ingredients_word(raw.strip()):
+            continue
+        try:
+            confidence = float(data["conf"][i])
+        except (ValueError, TypeError, KeyError):
+            confidence = 0
+        candidate = (
+            confidence,
+            int(data["left"][i]), int(data["top"][i]),
+            int(data["width"][i]), int(data["height"][i])
         )
+        if best is None or candidate[0] > best[0]:
+            best = candidate
 
-        return (
-            x,
-            absolute_y,
-            fw,
-            fh
-        )
-
-    # --------------------------------------------------------
-    # Second attempt: complete image
-    # --------------------------------------------------------
-
-    enhanced = enhance_green_channel(
-        image
-    )
-
-    found = find_ingredients_word(
-        enhanced
-    )
-
-    if found is not None:
-
-        return found
-
-    return None
+    if best is None:
+        return None
+    return best[1], best[2], best[3], best[4]
 
 
 # ============================================================
 # CROP INGREDIENT REGION
 # ============================================================
 
-def crop_ingredient_region(
-    image,
-    location
-):
-
+def crop_ingredient_region(image, location):
     h, w = image.shape[:2]
-
     x, y, word_w, word_h = location
 
-    # --------------------------------------------------------
-    # Horizontal crop
-    #
-    # Start slightly before "INGREDIENTS".
-    #
-    # Don't include the extreme right-hand side of the
-    # package because that may contain graphics or another
-    # panel.
-    # --------------------------------------------------------
-
-    x1 = max(
-        0,
-        x - 40
-    )
-
-    # The ingredient text usually extends substantially
-    # to the right of the heading.
-    x2 = min(
-        w,
-        x + 950
-    )
-
-    # --------------------------------------------------------
-    # Vertical crop
-    # --------------------------------------------------------
-
-    y1 = max(
-        0,
-        y - 25
-    )
-
-    # Include enough space for several lines of ingredients
-    # and the allergen heading so we can remove the latter.
-    y2 = min(
-        h,
-        y + 430
-    )
-
-    return image[
-        y1:y2,
-        x1:x2
-    ]
+    # Ingredient lists may be in any part of the package. Capture a broad
+    # area below and to the right of the heading without hard-coded 950 px.
+    x1 = max(0, x - int(w * 0.015))
+    x2 = min(w, max(x + int(w * 0.65), x + word_w + int(w * 0.10)))
+    y1 = max(0, y - int(word_h * 0.8))
+    y2 = min(h, y + max(int(h * 0.42), int(word_h * 12)))
+    return image[y1:y2, x1:x2]
 
 
 # ============================================================
@@ -902,6 +798,83 @@ def extract_ingredients_section(
 
 
 # ============================================================
+# DATABASE-ASSISTED OCR CORRECTION
+# ============================================================
+
+def _ingredient_terms():
+    """Build a compact list of database names/aliases once at startup."""
+    terms = []
+    for item in INGREDIENTS:
+        for value in ([item.get("name", "")] + item.get("aliases", []) + item.get("codes", [])):
+            value = str(value or "").strip()
+            normalized = normalize(value)
+            if normalized:
+                terms.append((normalized, value, item.get("name", value)))
+    # Longest terms first; retain database terminology.
+    return sorted(set(terms), key=lambda x: len(x[0]), reverse=True)
+
+
+INGREDIENT_TERMS = _ingredient_terms()
+
+
+def correct_ocr_with_database(text):
+    """
+    Correct clear OCR misspellings using ingredients.json only.
+    Operates on comma/semicolon/newline-delimited ingredient phrases and
+    preserves surrounding qualifiers. It deliberately avoids replacing a
+    longer phrase (for example 'soy sauce') with a shorter database term.
+    """
+    if not text or not INGREDIENT_TERMS:
+        return text
+
+    output = []
+    for line in text.splitlines():
+        pieces = re.split(r"([,;])", line)
+        for idx in range(0, len(pieces), 2):
+            phrase = pieces[idx]
+            stripped = phrase.strip()
+            if not stripped:
+                continue
+
+            # Keep bracketed percentages, quantities, and other qualifiers.
+            core = re.sub(r"\([^)]*\)|\b\d+(?:\.\d+)?\s*%?", " ", stripped)
+            core_norm = normalize(core)
+            if not core_norm or len(core_norm) < 3:
+                continue
+
+            # Exact aliases anywhere in a phrase are already good; don't
+            # collapse the phrase to a shorter ingredient name.
+            if any(re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", core_norm)
+                   for term, _, _ in INGREDIENT_TERMS):
+                continue
+
+            # Fuzzy correction is intentionally conservative and token-count
+            # matched to avoid false positives on compound ingredients.
+            tokens = core_norm.split()
+            if len(tokens) > 3:
+                continue
+            candidates = [
+                (difflib.SequenceMatcher(None, core_norm, term).ratio(), term, display, canonical)
+                for term, display, canonical in INGREDIENT_TERMS
+                if len(term.split()) == len(tokens) and abs(len(term) - len(core_norm)) <= 3
+            ]
+            if not candidates:
+                continue
+            ratio, term, display, canonical = max(candidates, key=lambda x: x[0])
+            if ratio < 0.86:
+                continue
+
+            # Replace only the core phrase, retaining punctuation/qualifiers
+            # by replacing the phrase only when it is essentially just that term.
+            if len(normalize(stripped).split()) == len(tokens) and len(normalize(stripped)) <= len(term) + 5:
+                phrase = re.sub(re.escape(stripped), canonical, phrase, count=1, flags=re.I)
+                pieces[idx] = phrase
+
+        output.append("".join(pieces))
+    return "\n".join(output)
+
+
+# ============================================================
 # OCR SCORE
 # ============================================================
 
@@ -982,181 +955,66 @@ def score_ocr_text(
 # OCR INGREDIENT REGION
 # ============================================================
 
-def ocr_ingredient_region(
-    crop
-):
+def ocr_ingredient_region(crop):
+    """Run one primary OCR pass, with one thresholded retry only if needed."""
+    if crop is None or crop.size == 0:
+        return ""
 
-    # --------------------------------------------------------
-    # METHOD 1
-    #
-    # Green channel.
-    # --------------------------------------------------------
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    # Upscale only small crops: helps tiny printed text without bloating all OCR.
+    if gray.shape[1] < 1100:
+        scale = min(1.7, 1100 / float(gray.shape[1]))
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    green = enhance_green_channel(
-        crop
+    # Adaptive threshold is useful for uneven package lighting.
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    text = pytesseract.image_to_string(
+        enhanced,
+        config="--oem 3 --psm 6 -c preserve_interword_spaces=1",
+        timeout=15,
     )
+    text = clean_ocr_text(text)
 
-    text1 = pytesseract.image_to_string(
-        green,
-        config=(
-            "--oem 3 "
-            "--psm 6 "
-            "-c preserve_interword_spaces=1"
+    # Only retry when the primary pass yielded very little useful text.
+    if len(re.sub(r"[^A-Za-z0-9]", "", text)) < 18:
+        binary = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 31, 11
         )
-    )
-
-    text1 = clean_ocr_text(
-        text1
-    )
-
-    score1 = score_ocr_text(
-        text1
-    )
-
-    # --------------------------------------------------------
-    # If the first result is clearly good, stop.
-    # --------------------------------------------------------
-
-    if (
-        "ingredient" in text1.lower()
-        and score1 >= 35
-    ):
-
-        return text1
-
-    # --------------------------------------------------------
-    # METHOD 2
-    #
-    # Yellow-text color mask.
-    #
-    # Useful for red/orange packages with yellow lettering.
-    # --------------------------------------------------------
-
-    mask = make_yellow_text_mask(
-        crop
-    )
-
-    text2 = pytesseract.image_to_string(
-        mask,
-        config=(
-            "--oem 3 "
-            "--psm 11 "
-            "-c preserve_interword_spaces=1"
+        retry = pytesseract.image_to_string(
+            binary,
+            config="--oem 3 --psm 6 -c preserve_interword_spaces=1",
+            timeout=15,
         )
-    )
+        retry = clean_ocr_text(retry)
+        if score_ocr_text(retry) > score_ocr_text(text):
+            text = retry
 
-    text2 = clean_ocr_text(
-        text2
-    )
-
-    score2 = score_ocr_text(
-        text2
-    )
-
-    # --------------------------------------------------------
-    # Select better result.
-    # --------------------------------------------------------
-
-    if score2 > score1:
-
-        return text2
-
-    return text1
+    return text
 
 
-# ============================================================
-# MAIN OCR
-# ============================================================
-
-def perform_ocr(
-    image
-):
-
-    # --------------------------------------------------------
-    # Resize first
-    # --------------------------------------------------------
-
-    image = resize_for_ocr(
-        image
-    )
-
-    # --------------------------------------------------------
-    # Find INGREDIENTS
-    # --------------------------------------------------------
-
-    location = locate_ingredient_region(
-        image
-    )
-
-    # --------------------------------------------------------
-    # Targeted OCR
-    # --------------------------------------------------------
+def perform_ocr(image):
+    """
+    Locate the Ingredients heading anywhere in the image, OCR a targeted crop,
+    then use the ingredient database for conservative OCR autocorrection.
+    """
+    image = resize_for_ocr(image)
+    location = locate_ingredient_region(image)
 
     if location is not None:
+        crop = crop_ingredient_region(image, location)
+        text = ocr_ingredient_region(crop)
+        ingredients = extract_ingredients_section(text)
+        if len(ingredients) >= 12 and len(ingredients.split()) >= 2:
+            return correct_ocr_with_database(ingredients)
 
-        crop = crop_ingredient_region(
-            image,
-            location
-        )
-
-        text = ocr_ingredient_region(
-            crop
-        )
-
-        ingredients = extract_ingredients_section(
-            text
-        )
-
-        # Good targeted result
-        if (
-            len(ingredients) >= 20
-            and len(
-                ingredients.split()
-            ) >= 3
-        ):
-
-            return ingredients
-
-    # ========================================================
-    # FALLBACK
-    #
-    # If automatic location failed, OCR the lower part of
-    # the complete image.
-    # ========================================================
-
-    h, w = image.shape[:2]
-
-    lower = image[
-        int(h * 0.45):h,
-        0:w
-    ]
-
-    lower_green = enhance_green_channel(
-        lower
-    )
-
-    fallback = pytesseract.image_to_string(
-        lower_green,
-        config=(
-            "--oem 3 "
-            "--psm 11 "
-            "-c preserve_interword_spaces=1"
-        )
-    )
-
-    fallback = clean_ocr_text(
-        fallback
-    )
-
-    ingredients = extract_ingredients_section(
-        fallback
-    )
-
-    if ingredients:
-
-        return ingredients
-
-    return fallback
+    # Fallback: one OCR pass on the full image (not just its lower half), so
+    # packages with the ingredient panel near the top or middle still work.
+    fallback = ocr_ingredient_region(image)
+    extracted = extract_ingredients_section(fallback)
+    result = extracted if extracted else fallback
+    return correct_ocr_with_database(result)
 
 
 # ============================================================
