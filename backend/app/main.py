@@ -599,38 +599,49 @@ def find_ingredients_word(
 # ============================================================
 
 def locate_ingredient_region(image):
-    """
-    Find the heading anywhere in the image with one OCR layout pass.
-    Returns x, y, width, height in the supplied image's coordinates.
-    """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Avoid expensive multi-method preprocessing for the heading pass.
-    data = pytesseract.image_to_data(
-        gray,
-        config="--oem 3 --psm 11",
-        output_type=pytesseract.Output.DICT,
-        timeout=12,
-    )
+    """Fast heading search: try the likely lower label area first, then whole image."""
+    h, w = image.shape[:2]
+    # Most packaging ingredient panels are below the middle. Searching this
+    # smaller ROI first is much faster than OCR over the entire photograph.
+    regions = [(int(h * 0.38), h)]
+    if h > 900:
+        regions.append((0, h))
 
-    best = None
-    for i, raw in enumerate(data.get("text", [])):
-        if not is_ingredients_word(raw.strip()):
-            continue
+    for y0, y1 in regions:
+        roi = image[y0:y1, :]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi
+        # Keep the OCR input bounded; huge images can make Tesseract stall.
+        rh, rw = gray.shape[:2]
+        if rw > 1200:
+            scale = 1200.0 / rw
+            gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
         try:
-            confidence = float(data["conf"][i])
-        except (ValueError, TypeError, KeyError):
-            confidence = 0
-        candidate = (
-            confidence,
-            int(data["left"][i]), int(data["top"][i]),
-            int(data["width"][i]), int(data["height"][i])
-        )
-        if best is None or candidate[0] > best[0]:
-            best = candidate
+            data = pytesseract.image_to_data(
+                gray, config="--oem 1 --psm 11",
+                output_type=pytesseract.Output.DICT, timeout=5
+            )
+        except (RuntimeError, pytesseract.TesseractError):
+            continue
 
-    if best is None:
-        return None
-    return best[1], best[2], best[3], best[4]
+        best = None
+        scale_back = rw / float(gray.shape[1])
+        for i, raw in enumerate(data.get("text", [])):
+            if not is_ingredients_word(raw.strip()):
+                continue
+            try:
+                confidence = float(data["conf"][i])
+            except (ValueError, TypeError, KeyError):
+                confidence = 0
+            candidate = (confidence,
+                         int(data["left"][i] * scale_back),
+                         int(data["top"][i] * scale_back),
+                         int(data["width"][i] * scale_back),
+                         int(data["height"][i] * scale_back))
+            if best is None or candidate[0] > best[0]:
+                best = candidate
+        if best is not None:
+            return best[1], best[2], best[3], best[4] + y0
+    return None
 
 
 # ============================================================
@@ -956,49 +967,51 @@ def score_ocr_text(
 # ============================================================
 
 def ocr_ingredient_region(crop):
-    """Run one primary OCR pass, with one thresholded retry only if needed."""
+    """Bounded-time OCR with a smaller, fast fallback if Tesseract times out."""
     if crop is None or crop.size == 0:
         return ""
 
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    # Upscale only small crops: helps tiny printed text without bloating all OCR.
-    if gray.shape[1] < 1100:
-        scale = min(1.7, 1100 / float(gray.shape[1]))
+    # Limit work and avoid aggressive upscaling that can cause timeouts.
+    h, w = gray.shape[:2]
+    if w > 1400:
+        scale = 1400.0 / w
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    elif w < 850:
+        scale = min(1.5, 850.0 / w)
         gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    # Adaptive threshold is useful for uneven package lighting.
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
-    text = pytesseract.image_to_string(
-        enhanced,
-        config="--oem 3 --psm 6 -c preserve_interword_spaces=1",
-        timeout=15,
-    )
-    text = clean_ocr_text(text)
+    try:
+        text = pytesseract.image_to_string(
+            enhanced, config="--oem 1 --psm 6 -c preserve_interword_spaces=1",
+            timeout=8
+        )
+        text = clean_ocr_text(text)
+    except (RuntimeError, pytesseract.TesseractError):
+        text = ""
 
-    # Only retry when the primary pass yielded very little useful text.
+    # One quick retry only when the first pass timed out or returned almost nothing.
     if len(re.sub(r"[^A-Za-z0-9]", "", text)) < 18:
-        binary = cv2.adaptiveThreshold(
-            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY, 31, 11
-        )
-        retry = pytesseract.image_to_string(
-            binary,
-            config="--oem 3 --psm 6 -c preserve_interword_spaces=1",
-            timeout=15,
-        )
-        retry = clean_ocr_text(retry)
-        if score_ocr_text(retry) > score_ocr_text(text):
-            text = retry
-
+        try:
+            # Otsu is cheaper than adaptive thresholding and works well on this
+            # high-contrast yellow-on-red ingredient panel.
+            _, binary = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            retry = pytesseract.image_to_string(
+                binary, config="--oem 1 --psm 6",
+                timeout=6
+            )
+            retry = clean_ocr_text(retry)
+            if score_ocr_text(retry) > score_ocr_text(text):
+                text = retry
+        except (RuntimeError, pytesseract.TesseractError):
+            pass
     return text
 
 
 def perform_ocr(image):
-    """
-    Locate the Ingredients heading anywhere in the image, OCR a targeted crop,
-    then use the ingredient database for conservative OCR autocorrection.
-    """
+    """Run bounded-time OCR on the ingredient panel, with a direct lower-panel fallback."""
     image = resize_for_ocr(image)
     location = locate_ingredient_region(image)
 
@@ -1006,12 +1019,14 @@ def perform_ocr(image):
         crop = crop_ingredient_region(image, location)
         text = ocr_ingredient_region(crop)
         ingredients = extract_ingredients_section(text)
-        if len(ingredients) >= 12 and len(ingredients.split()) >= 2:
+        if len(ingredients) >= 8:
             return correct_ocr_with_database(ingredients)
 
-    # Fallback: one OCR pass on the full image (not just its lower half), so
-    # packages with the ingredient panel near the top or middle still work.
-    fallback = ocr_ingredient_region(image)
+    # Fallback suited to common labels: OCR the bottom 45% where ingredients
+    # and allergen text usually appear, rather than the full high-detail photo.
+    h, w = image.shape[:2]
+    lower = image[int(h * 0.55):h, :]
+    fallback = ocr_ingredient_region(lower)
     extracted = extract_ingredients_section(fallback)
     result = extracted if extracted else fallback
     return correct_ocr_with_database(result)
